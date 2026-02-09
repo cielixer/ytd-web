@@ -2,8 +2,7 @@ services:
   ytd-web:
     build: .
     container_name: ytd-web
-    ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+    network_mode: host
     env_file:
       - .env
     environment:
