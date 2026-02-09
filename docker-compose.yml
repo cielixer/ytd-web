@@ -1,0 +1,23 @@
+services:
+  ytd-web:
+    build: .
+    container_name: ytd-web
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - TMP_DIR=/tmp/ytd-web
+    volumes:
+      - ytd-tmp:/tmp/ytd-web
+    restart: unless-stopped
+    # Security: limit resources
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+volumes:
+  ytd-tmp:
