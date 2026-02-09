@@ -25,8 +25,11 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:"],
       connectSrc: ["'self'"],
+      upgradeInsecureRequests: null,
     },
   },
+  // Disable HSTS — site is served over plain HTTP
+  strictTransportSecurity: false,
 }));
 
 // Trust proxy (for Docker/reverse proxy setups)
