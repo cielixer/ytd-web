@@ -4,6 +4,8 @@ import { resolve, join } from "path";
 // Load .env from project root (one level up from backend/src or backend/dist)
 dotenvConfig({ path: resolve(__dirname, "../../.env"), quiet: true });
 
+import { execFile } from "child_process";
+import { promisify } from "util";
 import express from "express";
 import session from "express-session";
 import helmet from "helmet";
@@ -12,6 +14,8 @@ import { requireAuth } from "./middleware/auth";
 import { createRateLimiter } from "./middleware/rateLimiter";
 import { createAuthRouter } from "./routes/auth";
 import { createDownloadRouter } from "./routes/download";
+
+const execFileAsync = promisify(execFile);
 
 const config = loadConfig();
 const app = express();
@@ -62,8 +66,18 @@ app.use("/api/auth", createAuthRouter(config));
 app.use("/api/download", createDownloadRouter(config));
 
 // Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+app.get("/api/health", async (_req, res) => {
+  let ytdlpVersion = "unknown";
+  
+  try {
+    const { stdout } = await execFileAsync("yt-dlp", ["--version"], { timeout: 5000 });
+    ytdlpVersion = stdout.trim();
+  } catch (error) {
+    // Fallback on any error (timeout, not found, etc.)
+    // Do not throw — health check should always return 200 with status:"ok"
+  }
+  
+  res.json({ status: "ok", ytdlpVersion });
 });
 
 // Serve frontend static files in production
