@@ -7,3 +7,5 @@ dist
 *.md
 .DS_Store
 tmp
+.sisyphus/
+AGENTS.md
