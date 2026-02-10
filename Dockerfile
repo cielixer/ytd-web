@@ -35,12 +35,17 @@ RUN apt-get update && \
       python3 \
       python3-pip \
       ffmpeg \
-      ca-certificates && \
-    pip3 install --break-system-packages "yt-dlp[default]" && \
+      ca-certificates \
+      cron \
+      gosu && \
+    pip3 install --break-system-packages --no-cache-dir "yt-dlp[default]" && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Copy backend build output and hoisted node_modules
 COPY --from=backend-build /app/backend/dist ./dist
@@ -56,11 +61,11 @@ RUN mkdir -p /tmp/ytd-web
 # Non-root user for security
 RUN groupadd -r ytdweb && useradd -r -g ytdweb -d /app ytdweb && \
     chown -R ytdweb:ytdweb /app /tmp/ytd-web
-USER ytdweb
 
 EXPOSE 3000
 
 ENV NODE_ENV=production
 ENV TMP_DIR=/tmp/ytd-web
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]
