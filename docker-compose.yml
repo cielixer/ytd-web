@@ -9,6 +9,9 @@ services:
     environment:
       - NODE_ENV=production
       - TMP_DIR=/tmp/ytd-web
+      - YTDLP_AUTO_UPDATE=${YTDLP_AUTO_UPDATE:-true}
+      - YTDLP_UPDATE_INTERVAL=${YTDLP_UPDATE_INTERVAL:-6h}
+    init: true
     volumes:
       - ytd-tmp:/tmp/ytd-web
     restart: unless-stopped
