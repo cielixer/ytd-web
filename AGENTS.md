@@ -1,163 +1,125 @@
 # AGENTS.md — YTD-Web
 
-## Project Overview
+**Generated:** 2026-02-10 | **Commit:** dbf9f0b | **Branch:** main
 
-YouTube music downloader web app. Users enter a YouTube URL and download audio as MP3.
-Frontend: React + TypeScript + Vite. Backend: Node.js + Express + TypeScript.
-Downloads powered by yt-dlp + ffmpeg. Dockerized for deployment. PIN-based auth.
+## OVERVIEW
 
-## Architecture
+YouTube music downloader. Paste URL → get MP3. React+Vite frontend, Express backend, yt-dlp+ffmpeg processing. PIN-gated, Dockerized.
+
+## STRUCTURE
 
 ```
 ytd-web/
-├── frontend/          # React SPA (Vite)
-│   └── src/
-│       ├── components/  # PinPad, DownloadForm, ProgressIndicator
-│       ├── App.tsx      # Root component (auth routing)
-│       ├── api.ts       # Fetch wrappers for /api/*
-│       ├── main.tsx     # Entry point
-│       └── index.css    # Global styles
-├── backend/           # Express API server
-│   └── src/
-│       ├── middleware/  # auth.ts (PIN session), rateLimiter.ts
-│       ├── routes/      # auth.ts (POST /verify, GET /status), download.ts (POST /)
-│       ├── services/    # ytdlp.ts (spawns yt-dlp via execFile)
-│       ├── utils/       # validation.ts (YouTube URL whitelist)
-│       ├── config.ts    # Environment config loader
-│       └── index.ts     # Express app entry point
-├── Dockerfile         # Multi-stage build (frontend build, backend build, production)
-├── docker-compose.yml # Single service with resource limits
-└── .env.example       # PIN, PORT, RATE_LIMIT_MAX, SESSION_SECRET
+├── frontend/src/          # React SPA — see frontend/src/AGENTS.md
+│   ├── components/        # PinPad, DownloadForm, ProgressIndicator
+│   ├── App.tsx            # Auth gate (PIN → download form)
+│   ├── api.ts             # fetch wrappers for /api/*
+│   └── index.css          # All styles (dark theme, mobile-first)
+├── backend/src/           # Express API — see backend/src/AGENTS.md
+│   ├── middleware/         # auth (PIN session + lockout), rateLimiter
+│   ├── routes/            # auth (verify/status), download (POST → stream MP3)
+│   ├── services/          # ytdlp.ts (execFile yt-dlp, progress parsing, cleanup)
+│   ├── utils/             # validation.ts (YouTube URL whitelist)
+│   ├── config.ts          # Env loader (PIN, PORT, RATE_LIMIT_MAX, etc.)
+│   └── index.ts           # Express app entry (helmet, session, routing, SPA fallback)
+├── docker-entrypoint.sh    # Auto-update logic + privilege drop
+├── Dockerfile             # 4-stage: deps → frontend build → backend build → prod
+├── docker-compose.yml     # Single service, 512MB/1CPU limit, port 7893
+└── .env                   # PIN, PORT, RATE_LIMIT_MAX, SESSION_SECRET, TMP_DIR
 ```
 
-Frontend is built by Vite into `backend/dist/public/` and served as static files by Express.
+Frontend builds into `backend/dist/public/` — Express serves it as static files.
 
-## Build / Dev / Lint Commands
+## WHERE TO LOOK
+
+| Task | Location | Notes |
+|------|----------|-------|
+| Add API endpoint | `backend/src/routes/` → mount in `backend/src/index.ts` | Follow factory pattern: `createXRouter(config)` |
+| Add React component | `frontend/src/components/` | Named function export |
+| Change auth logic | `backend/src/middleware/auth.ts` | Session augmentation via `declare module` |
+| Change URL validation | `backend/src/utils/validation.ts` | ALLOWED_HOSTS whitelist |
+| Change yt-dlp behavior | `backend/src/services/ytdlp.ts` | Security flags are CRITICAL here |
+| Change styling | `frontend/src/index.css` | Single CSS file, no preprocessor |
+| Change env config | `backend/src/config.ts` + `.env` + `.env.example` | Update all three |
+| Change auto-update behavior | `docker-entrypoint.sh` | Cron schedule, toggle via YTDLP_AUTO_UPDATE |
+| Docker/deploy | `Dockerfile` + `docker-compose.yml` | Rebuild image for yt-dlp updates |
+
+## CODE MAP
+
+| Symbol | Type | Location | Role |
+|--------|------|----------|------|
+| `loadConfig` | function | `backend/src/config.ts` | Env → typed Config object |
+| `requireAuth` | middleware factory | `backend/src/middleware/auth.ts` | Session check, skips /api/auth + /api/health |
+| `createRateLimiter` | middleware factory | `backend/src/middleware/rateLimiter.ts` | express-rate-limit wrapper |
+| `createAuthRouter` | router factory | `backend/src/routes/auth.ts` | PIN verify + status check |
+| `createDownloadRouter` | router factory | `backend/src/routes/download.ts` | URL validate → download → stream MP3 |
+| `downloadAudio` | async function | `backend/src/services/ytdlp.ts` | Spawns yt-dlp, returns {filePath, title} |
+| `validateYouTubeUrl` | function | `backend/src/utils/validation.ts` | URL parse + hostname whitelist |
+| `App` | component | `frontend/src/App.tsx` | Auth gate: PinPad or DownloadForm |
+| `PinPad` | component | `frontend/src/components/PinPad.tsx` | 4-digit PIN entry with lockout UI |
+| `DownloadForm` | component | `frontend/src/components/DownloadForm.tsx` | URL input → fetch /api/download → blob download |
+| `ProgressIndicator` | component | `frontend/src/components/ProgressIndicator.tsx` | Status display (downloading/converting/error/complete) |
+
+## CONVENTIONS
+
+- **No shared types package** — duplicate types between frontend/backend
+- **Factory pattern** — all routers/middleware take `Config` param: `createXRouter(config)`
+- **No ESLint/Prettier** — type checking only via `tsc --noEmit`
+- **Named exports everywhere** — except `App.tsx` (default export for Vite)
+- **`interface`** for object shapes, **`type`** for unions
+- Import order: node builtins → external packages → relative imports
+- Use `type` keyword for type-only imports
+- File naming: camelCase (`.ts`), PascalCase (`.tsx`)
+
+## ANTI-PATTERNS (CRITICAL)
+
+| Never Do | Why | Correct Alternative |
+|----------|-----|---------------------|
+| `exec()` or `execSync()` for yt-dlp | Shell injection | `execFile()` only |
+| Omit `--no-exec` or `--ignore-config` from yt-dlp | yt-dlp can run arbitrary commands | Always include both flags |
+| Interpolate user input into shell strings | Command injection | Pass as array args to `execFile` |
+| Accept non-YouTube URLs | Scope + security | `validateYouTubeUrl()` whitelist |
+| Expose internal error details to client | Information leak | Generic user-facing messages |
+| Use `any` type | Type safety | `unknown` + type narrowing |
+| `@ts-ignore` / `@ts-expect-error` | Masks real issues | Fix the type error |
+| Skip `err instanceof Error` check | Runtime safety | Narrow before `.message` |
+
+## COMMANDS
 
 ```sh
-# Install all dependencies (both workspaces)
-npm install
-
-# --- Development ---
-npm run dev:backend          # Start backend with tsx watch (port 3000)
-npm run dev:frontend         # Start Vite dev server (port 5173, proxies /api to :3000)
-
-# --- Build ---
-npm run build                # Build frontend then backend (production)
-npm run build -w frontend    # Build frontend only
-npm run build -w backend     # Build backend only (tsc)
-
-# --- Type checking (lint) ---
-npm run lint                 # Type-check both workspaces
-npm run lint -w backend      # Type-check backend only (tsc --noEmit)
-npm run lint -w frontend     # Type-check frontend only (tsc --noEmit)
-
-# --- Production ---
-npm run start                # Start compiled backend (serves frontend static files)
-
-# --- Docker ---
-npm run docker:build         # docker compose build
-npm run docker:up            # docker compose up -d
-npm run docker:down          # docker compose down
-docker compose build         # Build Docker image
-docker compose up -d         # Run in background
-docker compose logs -f       # View logs
+npm install                      # Install all workspaces
+npm run dev:backend              # tsx watch (port 3000)
+npm run dev:frontend             # Vite dev server (port 5173, proxies /api → :3000)
+npm run build                    # Production build (frontend then backend)
+npm run lint                     # tsc --noEmit on both workspaces
+npm run start                    # Run production server
+npm run docker:build && npm run docker:up   # Build + run container
 ```
 
-## Environment Variables
+## ENV
 
-Copy `.env.example` to `.env` before running:
+Copy `.env.example` → `.env`. Required for local dev:
 
-| Variable         | Default                          | Description                      |
-|------------------|----------------------------------|----------------------------------|
-| `PIN`            | `1234`                           | 4-digit auth PIN                 |
-| `PORT`           | `3000`                           | Server port                      |
-| `RATE_LIMIT_MAX` | `5`                              | Max API requests per minute / IP |
-| `SESSION_SECRET` | random (auto-generated if unset) | Express session secret           |
-| `TMP_DIR`        | `/tmp/ytd-web`                   | Temp dir for downloads           |
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `PIN` | `1234` | Must be exactly 4 digits |
+| `PORT` | `3000` | |
+| `RATE_LIMIT_MAX` | `5` | Requests per minute per IP |
+| `SESSION_SECRET` | auto-generated | Set in production |
+| `TMP_DIR` | `/tmp/ytd-web` | Temp download storage |
+| `YTDLP_AUTO_UPDATE` | `true` | Toggle yt-dlp auto-updates (Docker only) |
+| `YTDLP_UPDATE_INTERVAL` | `6h` | 1h, 6h, 12h, or 24h (Docker only) |
 
-## Code Style Guidelines
+## GOTCHAS
 
-### TypeScript
-
-- Strict mode enabled in both `tsconfig.json` files
-- Use explicit types for function parameters and return types
-- Use `interface` for object shapes, `type` for unions/intersections
-- No `any` — use `unknown` and narrow with type guards
-- Use `const` by default, `let` only when reassignment is needed
-
-### Imports
-
-- Use named exports/imports (no default exports except React components)
-- Import order: node builtins, external packages, internal modules (relative paths)
-- Use `type` imports when importing only types: `import type { Config } from "./config"`
-
-### Naming Conventions
-
-| Element           | Convention        | Example                  |
-|-------------------|-------------------|--------------------------|
-| Files             | camelCase         | `rateLimiter.ts`         |
-| React components  | PascalCase        | `PinPad.tsx`             |
-| Functions         | camelCase         | `validateYouTubeUrl`     |
-| Types/Interfaces  | PascalCase        | `DownloadProgress`       |
-| Constants         | UPPER_SNAKE_CASE  | `MAX_ATTEMPTS`           |
-| CSS classes       | kebab-case        | `pin-container`          |
-| Env variables     | UPPER_SNAKE_CASE  | `RATE_LIMIT_MAX`         |
-
-### React Components
-
-- Functional components only (no class components)
-- Use named function exports: `export function PinPad() {}`
-- Hooks at the top of the component function
-- Memoize callbacks with `useCallback` when passed as props
-- Keep components in `frontend/src/components/`
-
-### Error Handling
-
-- Backend: try/catch in route handlers, return JSON error responses with appropriate status codes
-- Use `err instanceof Error` type narrowing before accessing `.message`
-- Never expose internal error details to the client
-- Backend logs errors to console; client shows user-friendly messages
-
-### Security (CRITICAL)
-
-- **Command injection**: Always use `execFile` (not `exec`) to spawn yt-dlp. Never interpolate user input into shell commands
-- **URL validation**: Only allow youtube.com and youtu.be domains (see `validation.ts`)
-- **yt-dlp flags**: Always pass `--no-exec` and `--ignore-config` to prevent yt-dlp from running arbitrary commands
-- **Rate limiting**: All `/api/*` routes are rate-limited
-- **Input size**: Express body parser limited to 1KB
-- **Session cookies**: httpOnly, sameSite strict, 1-week expiry
-- **Non-root Docker**: Production container runs as `ytdweb` user
-
-### CSS / Styling
-
-- Plain CSS in `frontend/src/index.css` (no CSS-in-JS, no preprocessor)
-- Mobile-first responsive design
-- Dark theme (#0f0f1a background, #6c63ff accent)
-- Large touch targets (min 48px) for mobile usability
-- Use CSS custom properties if adding theming later
-
-### API Endpoints
-
-| Method | Path                | Auth? | Description                      |
-|--------|---------------------|-------|----------------------------------|
-| GET    | `/api/auth/status`  | No    | Check if session is authenticated |
-| POST   | `/api/auth/verify`  | No    | Verify PIN, set session          |
-| POST   | `/api/download`     | Yes   | Download YouTube audio as MP3    |
-| GET    | `/api/health`       | No    | Health check                     |
-
-### Adding New Features
-
-1. Backend routes go in `backend/src/routes/` — create a new router file and mount in `index.ts`
-2. Shared types should be duplicated (no shared package) — keep frontend/backend independent
-3. New middleware goes in `backend/src/middleware/`
-4. New React components go in `frontend/src/components/`
-5. Run `npm run lint` after changes to ensure type safety
-
-### Docker Notes
-
-- Multi-stage Dockerfile: stage 1 builds frontend, stage 2 builds backend, stage 3 is production
-- Production image includes: Node.js 20, Python 3, yt-dlp, ffmpeg
-- Container resource limits: 512MB RAM, 1 CPU core
-- Temp downloads stored in named Docker volume `ytd-tmp`
-- yt-dlp auto-updates are disabled in Docker; rebuild image to update
+- Frontend Vite dev server proxies `/api` → `localhost:3000` — must run both dev servers
+- `docker-compose.yml` maps port **7893**:7893, not 3000 — set `PORT=7893` in `.env`
+- Session cookie `secure: false` — set to `true` behind HTTPS reverse proxy
+- Helmet disables HSTS (`strictTransportSecurity: false`) — HTTP-only deployment assumed
+- yt-dlp progress is parsed from **stderr**, not stdout
+- `--print-to-file` writes title to sidecar `.title` file (avoids `--print` skip-download bug)
+- Lockout after 3 failed PIN attempts: 30s cooldown, tracked in-memory by IP
+- yt-dlp auto-updates via cron inside Docker. If cron fires mid-download, Linux inode semantics keep the old binary running safely.
+- `docker-compose.yml` uses `init: true` for tini — handles signals and zombie reaping
+- No tests exist — add vitest for frontend, jest for backend when needed
+- `trust proxy` is set to `1` — required for correct IP detection behind Docker/nginx
