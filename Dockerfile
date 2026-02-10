@@ -45,7 +45,8 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Copy backend build output and hoisted node_modules
 COPY --from=backend-build /app/backend/dist ./dist
